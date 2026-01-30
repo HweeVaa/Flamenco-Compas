@@ -130,10 +130,12 @@ h1 {
   font-weight: 700;
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
-  gap: 12px;
+.compas-ring {
+  position: relative;
+  width: min(620px, 92vw);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  --radius: min(250px, 36vw);
 }
 
 .beat {
@@ -143,6 +145,13 @@ h1 {
   text-align: center;
   border: 1px solid rgba(255, 255, 255, 0.05);
   transition: transform 0.15s ease, background 0.15s ease;
+  width: 72px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(var(--angle))
+    translateY(calc(-1 * var(--radius)))
+    rotate(calc(-1 * var(--angle)));
 }
 
 .beat span {
@@ -164,7 +173,10 @@ h1 {
 }
 
 .beat--active {
-  transform: scale(1.05);
+  transform: translate(-50%, -50%) rotate(var(--angle))
+    translateY(calc(-1 * var(--radius)))
+    rotate(calc(-1 * var(--angle)))
+    scale(1.08);
   background: rgba(127, 192, 255, 0.3);
   border-color: rgba(127, 192, 255, 0.6);
 }

@@ -77,6 +77,8 @@ function renderGrid() {
     const cell = document.createElement("div");
     cell.className = `beat${beat.accent ? " beat--accent" : ""}`;
     cell.dataset.index = index.toString();
+    const angle = (index / beats.length) * 360 - 90;
+    cell.style.setProperty("--angle", `${angle}deg`);
 
     const number = document.createElement("span");
     number.textContent = beat.label;
@@ -113,19 +115,28 @@ function playClick(isAccent) {
   if (!audioContext) return;
 
   const now = audioContext.currentTime;
-  const oscillator = audioContext.createOscillator();
-  const gain = audioContext.createGain();
+  const duration = 0.14;
+  const buffer = audioContext.createBuffer(1, audioContext.sampleRate * duration, audioContext.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i += 1) {
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 2);
+  }
 
-  oscillator.type = "square";
-  oscillator.frequency.value = isAccent ? 880 : 520;
+  const source = audioContext.createBufferSource();
+  source.buffer = buffer;
+  const bandpass = audioContext.createBiquadFilter();
+  bandpass.type = "bandpass";
+  bandpass.frequency.value = isAccent ? 1800 : 1400;
+  bandpass.Q.value = 1.2;
 
   const volume = (isAccent ? accentInput.value : 60) / 100;
+  const gain = audioContext.createGain();
   gain.gain.setValueAtTime(volume, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
-  oscillator.connect(gain).connect(audioContext.destination);
-  oscillator.start(now);
-  oscillator.stop(now + 0.13);
+  source.connect(bandpass).connect(gain).connect(audioContext.destination);
+  source.start(now);
+  source.stop(now + duration);
 }
 
 function scheduleBeat() {
