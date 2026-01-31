@@ -1,6 +1,6 @@
 const compasData = {
   solea: {
-    name: "솔레아 / 불레리아",
+    name: "?�레??/ 불레리아",
     beats: [
       { label: "1", accent: true },
       { label: "2", accent: false },
@@ -17,7 +17,7 @@ const compasData = {
     ]
   },
   seguiriya: {
-    name: "세기리야",
+    name: "?�기리야",
     beats: [
       { label: "1", accent: true },
       { label: "2", accent: false },
@@ -34,7 +34,7 @@ const compasData = {
     ]
   },
   tangos: {
-    name: "탕고스",
+    name: "?�고??",
     beats: [
       { label: "1", accent: true },
       { label: "2", accent: false },
@@ -70,14 +70,30 @@ let isRunning = false;
 let currentBeat = 0;
 let intervalId = null;
 
+function getTopIndex(beats) {
+  const topIndex = beats.findIndex((beat) => beat.label === "12");
+  return topIndex === -1 ? 0 : topIndex;
+}
+
+function getStartIndex(compasKey, beats) {
+  if (compasKey === "solea") {
+    const startIndex = beats.findIndex((beat) => beat.label === "1");
+    return startIndex === -1 ? 0 : startIndex;
+  }
+
+  return getTopIndex(beats);
+}
+
 function renderGrid() {
   const { beats } = compasData[compasSelect.value];
+  const offsetIndex = getTopIndex(beats);
+  currentBeat = getStartIndex(compasSelect.value, beats);
   grid.innerHTML = "";
   beats.forEach((beat, index) => {
     const cell = document.createElement("div");
     cell.className = `beat${beat.accent ? " beat--accent" : ""}`;
     cell.dataset.index = index.toString();
-    const angle = ((index + 1) / beats.length) * 360 - 90;
+    const angle = ((index - offsetIndex) / beats.length) * 360;
     cell.style.setProperty("--angle", `${angle}deg`);
 
     const number = document.createElement("span");
@@ -159,8 +175,8 @@ function start() {
 
   ensureAudioContext();
   isRunning = true;
-  toggleButton.textContent = "일시정지";
-  setStatus("재생 중", true);
+  toggleButton.textContent = "?�시?��?";
+  setStatus("?�생 �?, true);
 
   const bpm = Number(tempoInput.value);
   const swing = Number(swingInput.value) / 100;
@@ -186,14 +202,15 @@ function start() {
 function stop() {
   if (!isRunning) return;
   isRunning = false;
-  toggleButton.textContent = "시작";
-  setStatus("정지", false);
+  toggleButton.textContent = "?�작";
+  setStatus("?��?", false);
   clearInterval(intervalId);
 }
 
 function reset() {
   stop();
-  currentBeat = 0;
+  const { beats } = compasData[compasSelect.value];
+  currentBeat = getStartIndex(compasSelect.value, beats);
   const beatCells = grid.querySelectorAll(".beat");
   beatCells.forEach((cell) => cell.classList.remove("beat--active"));
 }
@@ -225,3 +242,4 @@ resetButton.addEventListener("click", reset);
 
 renderGrid();
 updateValues();
+
