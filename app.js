@@ -77,7 +77,7 @@ function renderGrid() {
     const cell = document.createElement("div");
     cell.className = `beat${beat.accent ? " beat--accent" : ""}`;
     cell.dataset.index = index.toString();
-    const angle = (index / beats.length) * 360 - 90;
+    const angle = ((index + 1) / beats.length) * 360 - 90;
     cell.style.setProperty("--angle", `${angle}deg`);
 
     const number = document.createElement("span");
@@ -126,7 +126,7 @@ function playClick(isAccent) {
   source.buffer = buffer;
   const bandpass = audioContext.createBiquadFilter();
   bandpass.type = "bandpass";
-  bandpass.frequency.value = isAccent ? 1800 : 1400;
+  bandpass.frequency.value = isAccent ? 2400 : 1400;
   bandpass.Q.value = 1.2;
 
   const volume = (isAccent ? accentInput.value : 60) / 100;
