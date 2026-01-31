@@ -14,53 +14,74 @@
         <h1>Flamenco Compas Trainer</h1>
         <p class="subtitle">Practice flamenco compas with visual + audio pulse and accents.</p>
       </div>
-      <div class="status" id="status">Stopped</div>
+      <div class="status-group">
+        <span class="credit">by HweeVaa</span>
+        <div class="status" id="status">Stopped</div>
+      </div>
     </header>
 
-    <section class="panel">
-      <div class="controls">
+    <section class="layout">
+      <div class="panel panel--settings">
+        <div class="controls">
+          <div class="control">
+            <label for="compas">Compas type</label>
+            <select id="compas">
+              <option value="solea">Solea / Buleria (12 beats)</option>
+              <option value="seguiriya">Seguiriya (12 beats)</option>
+              <option value="tangos">Tangos (4 beats)</option>
+              <option value="rumba">Rumba (4 beats)</option>
+            </select>
+          </div>
         <div class="control">
-          <label for="compas">Compas type</label>
-          <select id="compas">
-            <option value="solea">Solea / Buleria (12 beats)</option>
-            <option value="seguiriya">Seguiriya (12 beats)</option>
-            <option value="tangos">Tangos (4 beats)</option>
-            <option value="rumba">Rumba (4 beats)</option>
-          </select>
+          <div class="control__header">
+            <label for="tempo">Tempo (BPM)</label>
+            <input id="tempoNumber" type="number" min="60" max="250" value="120" />
+          </div>
+          <input id="tempo" type="range" min="60" max="250" value="120" />
+          <div class="control__value control__value--aux"><span id="tempoValue">120</span> BPM</div>
         </div>
-        <div class="control">
-          <label for="tempo">Tempo (BPM)</label>
-          <input id="tempo" type="range" min="60" max="220" value="120" />
-          <div class="control__value"><span id="tempoValue">120</span> BPM</div>
-        </div>
-        <div class="control">
-          <label for="swing">Swing</label>
-          <input id="swing" type="range" min="0" max="60" value="10" />
-          <div class="control__value"><span id="swingValue">10</span>%</div>
-        </div>
-        <div class="control">
-          <label for="accent">Accent level</label>
-          <input id="accent" type="range" min="40" max="100" value="90" />
-          <div class="control__value"><span id="accentValue">90</span>%</div>
-        </div>
+        <details id="advanced" class="advanced">
+          <summary>Advanced</summary>
+          <div class="advanced__grid">
+            <div class="control">
+              <div class="control__header">
+                <label for="swing">Swing</label>
+                <input id="swingNumber" type="number" min="0" max="60" value="0" />
+              </div>
+              <input id="swing" type="range" min="0" max="60" value="0" />
+              <div class="control__value control__value--aux"><span id="swingValue">0</span>%</div>
+            </div>
+            <div class="control">
+              <div class="control__header">
+                <label for="accent">Accent level</label>
+                <input id="accentNumber" type="number" min="40" max="100" value="90" />
+              </div>
+              <input id="accent" type="range" min="40" max="100" value="90" />
+              <div class="control__value control__value--aux"><span id="accentValue">90</span>%</div>
+            </div>
+            <div class="control control--cycles">
+              <label for="cycles">Cycles <span class="inline-note">(stop after N cycles)</span></label>
+              <input id="cycles" type="number" min="1" max="99" value="6" />
+            </div>
+            <div class="control control--toggle">
+              <div class="control__header">
+                <label for="infinite">Infinite <span class="inline-note">(ignore cycle limit)</span></label>
+                <input id="infinite" type="checkbox" />
+              </div>
+            </div>
+          </div>
+        </details>
       </div>
-      <div class="actions">
-        <button id="toggle" class="button button--primary">Start</button>
-        <button id="reset" class="button">Reset</button>
+        <div class="actions">
+          <button id="toggle" class="button button--primary">Start</button>
+          <button id="reset" class="button">Reset</button>
+        </div>
+        <div class="version">v1.0.0</div>
       </div>
-    </section>
 
-    <section class="panel">
-      <div class="compas-ring" id="grid"></div>
-    </section>
-
-    <section class="panel tips">
-      <h2>Tips</h2>
-      <ul>
-        <li>Desktop view: visual ring + click sounds for timing and accents.</li>
-        <li>Mobile: start button and sliders stay easy to reach.</li>
-        <li>Coming soon: palmas patterns and mode presets.</li>
-      </ul>
+      <div class="panel panel--compas">
+        <div class="compas-ring" id="grid"></div>
+      </div>
     </section>
   </main>
 

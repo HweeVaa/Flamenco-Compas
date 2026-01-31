@@ -56,10 +56,17 @@
 const compasSelect = document.getElementById("compas");
 const tempoInput = document.getElementById("tempo");
 const tempoValue = document.getElementById("tempoValue");
+const tempoNumber = document.getElementById("tempoNumber");
 const swingInput = document.getElementById("swing");
 const swingValue = document.getElementById("swingValue");
+const swingNumber = document.getElementById("swingNumber");
 const accentInput = document.getElementById("accent");
 const accentValue = document.getElementById("accentValue");
+const accentNumber = document.getElementById("accentNumber");
+const cyclesInput = document.getElementById("cycles");
+const infiniteInput = document.getElementById("infinite");
+const cyclesControl = document.querySelector(".control--cycles");
+const advancedDetails = document.getElementById("advanced");
 const grid = document.getElementById("grid");
 const status = document.getElementById("status");
 const toggleButton = document.getElementById("toggle");
@@ -71,6 +78,11 @@ let currentBeat = 0;
 let intervalId = null;
 let cycleClapBeats = [];
 let lastIntervalMs = 0;
+let cycleSoftOverlayBeats = [];
+let swingPhase = false;
+let cyclesLeft = null;
+let cycleBeatCount = 0;
+let gridResizeObserver = null;
 let samplesReady = false;
 let samplesPromise = null;
 const PALMA_DURATION = 0.18;
@@ -137,8 +149,8 @@ function pickCycleClaps(beats, startIndex) {
     .filter((index) => index !== null);
   if (candidates.length === 0) return [];
 
-  const maxClaps = Math.min(2, candidates.length);
-  const clapCount = Math.floor(Math.random() * (maxClaps + 1));
+  const maxClaps = Math.min(4, candidates.length);
+  const clapCount = Math.floor(Math.random() * (maxClaps - 1)) + 2;
   const picks = new Set();
   while (picks.size < clapCount) {
     const pick = candidates[Math.floor(Math.random() * candidates.length)];
@@ -147,18 +159,55 @@ function pickCycleClaps(beats, startIndex) {
   return Array.from(picks);
 }
 
+function pickCycleSoftOverlayBeats(beats, startIndex) {
+  const weakCandidates = beats
+    .map((beat, index) => (beat.accent ? null : index))
+    .filter((index) => index !== null && index !== startIndex);
+  if (weakCandidates.length === 0) return [];
+
+  const maxOverlays = Math.min(3, weakCandidates.length);
+  const overlayCount = Math.min(3, Math.max(1, Math.ceil(Math.random() * 3)));
+
+  const picks = new Set();
+  while (picks.size < Math.min(overlayCount, maxOverlays)) {
+    picks.add(weakCandidates[Math.floor(Math.random() * weakCandidates.length)]);
+  }
+  return Array.from(picks);
+}
+
+function layoutBeats() {
+  const { beats } = compasData[compasSelect.value];
+  const size = Math.min(grid.clientWidth, grid.clientHeight);
+  if (size < 200) return;
+
+  const sampleTile = grid.querySelector(".beat");
+  const tileSize = sampleTile ? sampleTile.offsetWidth : 60;
+  const padding = 10;
+  const radius = Math.max(0, size / 2 - tileSize / 2 - padding);
+  const startBeat = "12";
+  const startIndex = beats.findIndex((beat) => beat.label === startBeat);
+  const shift = startIndex === -1 ? 0 : startIndex;
+  const startAngle = 0;
+
+  beats.forEach((_, index) => {
+    const cell = grid.querySelector(`[data-index='${index}']`);
+    if (!cell) return;
+    const shiftedIndex = (index - shift + beats.length) % beats.length;
+    const angle = (shiftedIndex / beats.length) * 360 + startAngle;
+    cell.style.transform = `translate(-50%, -50%) rotate(${angle}deg) translateY(${-radius}px) rotate(${-angle}deg)`;
+  });
+}
+
 function renderGrid() {
   const { beats } = compasData[compasSelect.value];
-  const offsetIndex = getTopIndex(beats);
   currentBeat = getStartIndex(compasSelect.value, beats);
   cycleClapBeats = [];
+  cycleSoftOverlayBeats = [];
   grid.innerHTML = "";
   beats.forEach((beat, index) => {
     const cell = document.createElement("div");
     cell.className = `beat${beat.accent ? " beat--accent" : ""}`;
     cell.dataset.index = index.toString();
-    const angle = ((index - offsetIndex) / beats.length) * 360;
-    cell.style.setProperty("--angle", `${angle}deg`);
 
     const number = document.createElement("span");
     number.textContent = beat.label;
@@ -169,12 +218,37 @@ function renderGrid() {
     cell.append(number, label);
     grid.appendChild(cell);
   });
+
+  requestAnimationFrame(layoutBeats);
 }
 
 function updateValues() {
   tempoValue.textContent = tempoInput.value;
   swingValue.textContent = swingInput.value;
   accentValue.textContent = accentInput.value;
+  tempoNumber.value = tempoInput.value;
+  swingNumber.value = swingInput.value;
+  accentNumber.value = accentInput.value;
+}
+
+function updateCycleSettings() {
+  const infinite = infiniteInput.checked;
+  cyclesInput.disabled = infinite;
+  if (cyclesControl) {
+    cyclesControl.classList.toggle("control--disabled", infinite);
+  }
+  if (infinite) {
+    cyclesLeft = null;
+    return;
+  }
+  const parsed = Number.parseInt(cyclesInput.value, 10);
+  cyclesLeft = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function syncAdvancedPanel() {
+  if (!advancedDetails) return;
+  const compact = window.matchMedia("(max-height: 760px), (max-width: 1000px)").matches;
+  advancedDetails.open = !compact;
 }
 
 function setStatus(text, isActive = false) {
@@ -322,9 +396,9 @@ function playPalmaLayer(buffer, gainValue, panValue, delaySeconds) {
 
 function playPalmaDouble(primaryBuffer, secondaryBuffer, gainValue) {
   if (!audioContext || !primaryBuffer) return;
-  playPalmaLayer(primaryBuffer, gainValue, -0.08, 0);
+  playPalmaLayer(primaryBuffer, gainValue, -0.02, 0);
   if (secondaryBuffer) {
-    playPalmaLayer(secondaryBuffer, gainValue * 0.92, 0.08, 0.02 + Math.random() * 0.01);
+    playPalmaLayer(secondaryBuffer, gainValue * 0.92, 0.02, 0.02 + Math.random() * 0.01);
   }
 }
 
@@ -335,19 +409,20 @@ function playClick(beat) {
     const accentBase = Math.min(1, (Number(accentInput.value) / 100) * 1.2);
     const weakVariation = 0.85 + Math.random() * 0.3;
     const gainValue = beat.accent
-      ? (isHotAccent ? accentBase * 10.0 : accentBase * 7.6)
-      : 4.8 * weakVariation;
+      ? (isHotAccent ? accentBase * 13.5 : accentBase * 7.6)
+      : 4.1 * weakVariation;
     if (beat.accent) {
-      const primaryIndex = pickPalmaIndex(palmaSamples.strong, "strong", isHotAccent, avoidNextBeatSampleIds);
+      const avoidAccentIds = new Set([...lastBeatSampleIds, ...avoidNextBeatSampleIds]);
+      const primaryIndex = pickPalmaIndex(palmaSamples.strong, "strong", isHotAccent, avoidAccentIds);
       const primary = primaryIndex >= 0 ? palmaSamples.strong[primaryIndex] : null;
       const primaryId = primaryIndex >= 0 ? makeSampleId("strong", primaryIndex) : null;
 
-      const avoidSecondary = new Set(avoidNextBeatSampleIds);
+      const avoidSecondary = new Set(avoidAccentIds);
       if (primaryId) {
         avoidSecondary.add(primaryId);
       }
 
-      const useSordasLayer = Math.random() < 0.25;
+      const useSordasLayer = Math.random() < 0.15;
       const secondaryKey = useSordasLayer ? "weak" : "strong";
       const secondaryPool = useSordasLayer ? palmaSamples.weak : palmaSamples.strong;
       const secondaryIndex = pickPalmaIndex(secondaryPool, secondaryKey, false, avoidSecondary);
@@ -356,14 +431,16 @@ function playClick(beat) {
 
       playPalmaDouble(primary, secondary, Math.min(11.5, gainValue));
       lastBeatSampleIds = new Set([primaryId, secondaryId].filter(Boolean));
+      avoidNextBeatSampleIds = new Set(lastBeatSampleIds);
     } else {
-      const weakIndex = pickPalmaIndex(palmaSamples.weak, "weak", false, avoidNextBeatSampleIds);
+      const avoidWeakIds = new Set([...lastBeatSampleIds, ...avoidNextBeatSampleIds]);
+      const weakIndex = pickPalmaIndex(palmaSamples.weak, "weak", false, avoidWeakIds);
       const buffer = weakIndex >= 0 ? palmaSamples.weak[weakIndex] : null;
       playPalmaSample(buffer, Math.min(11.5, gainValue));
       const weakId = weakIndex >= 0 ? makeSampleId("weak", weakIndex) : null;
       lastBeatSampleIds = new Set([weakId].filter(Boolean));
+      avoidNextBeatSampleIds = new Set(lastBeatSampleIds);
     }
-    avoidNextBeatSampleIds = new Set();
     return;
   }
 
@@ -397,13 +474,13 @@ function playClick(beat) {
 function playClap() {
   if (!audioContext) return;
   if (samplesReady) {
-    const useStrong = Math.random() < 0.5;
+    const useStrong = Math.random() < 0.6;
     const avoidIds = new Set([...lastBeatSampleIds, ...lastClapSampleIds]);
     const key = useStrong ? "strong" : "weak";
     const buffers = useStrong ? palmaSamples.strong : palmaSamples.weak;
     const index = pickPalmaIndex(buffers, key, false, avoidIds);
     const buffer = index >= 0 ? buffers[index] : null;
-    playPalmaSample(buffer, 5.0);
+    playPalmaSample(buffer, 3.6);
     const clapId = index >= 0 ? makeSampleId(key, index) : null;
     lastClapSampleIds = new Set([clapId].filter(Boolean));
     avoidNextBeatSampleIds = new Set([clapId].filter(Boolean));
@@ -454,6 +531,7 @@ function scheduleBeat() {
   const startIndex = getStartIndex(compasSelect.value, beats);
   if (currentBeat === startIndex) {
     cycleClapBeats = pickCycleClaps(beats, startIndex);
+    cycleSoftOverlayBeats = pickCycleSoftOverlayBeats(beats, startIndex);
   }
   const beat = beats[currentBeat];
   const beatCells = grid.querySelectorAll(".beat");
@@ -464,24 +542,70 @@ function scheduleBeat() {
     activeCell.classList.add("beat--active");
   }
 
-  if (!beat.accent && lastIntervalMs > 0) {
-    const onTime = Math.random() < 0.6;
-    if (onTime) {
-      playClick(beat);
-    } else {
-      const maxJitter = Math.min(18, lastIntervalMs * 0.08);
-      const jitter = Math.random() * maxJitter;
-      setTimeout(() => playClick(beat), Math.round(jitter));
-    }
-  } else {
-    playClick(beat);
+  const hasClap = cycleClapBeats.includes(currentBeat) && lastIntervalMs > 0;
+  playClick(beat);
+
+  if (!beat.accent && cycleSoftOverlayBeats.includes(currentBeat) && samplesReady) {
+    const avoidIds = new Set([...lastBeatSampleIds, ...lastClapSampleIds]);
+    const overlayIndex = pickPalmaIndex(palmaSamples.strong, "strong", false, avoidIds);
+    const buffer = overlayIndex >= 0 ? palmaSamples.strong[overlayIndex] : null;
+    playPalmaSample(buffer, 1.6);
+    const overlayId = overlayIndex >= 0 ? makeSampleId("strong", overlayIndex) : null;
+    lastBeatSampleIds = new Set([overlayId].filter(Boolean));
   }
 
-  if (cycleClapBeats.includes(currentBeat) && lastIntervalMs > 0) {
-    const jitter = (Math.random() - 0.5) * 12;
-    setTimeout(playClap, lastIntervalMs * 0.5 + jitter);
+  if (hasClap) {
+    const offbeatTime = Math.max(0, lastIntervalMs * 0.45);
+    setTimeout(playClap, offbeatTime);
   }
   currentBeat = (currentBeat + 1) % beats.length;
+  if (cyclesLeft !== null) {
+    if (beats.length === 12) {
+      if (beat.label === "12") {
+        if (cycleBeatCount > 0) {
+          cyclesLeft -= 1;
+          if (cyclesLeft <= 0) {
+            stop();
+          }
+        }
+        cycleBeatCount = 0;
+      }
+      cycleBeatCount += 1;
+    } else if (currentBeat === startIndex) {
+      cyclesLeft -= 1;
+      if (cyclesLeft <= 0) {
+        stop();
+      }
+    }
+  }
+}
+
+function getNextIntervalMs() {
+  const bpm = Number(tempoInput.value);
+  const swing = Number(swingInput.value) / 100;
+  const baseInterval = 60000 / bpm;
+  if (swing <= 0) {
+    lastIntervalMs = baseInterval;
+    return baseInterval;
+  }
+
+  const interval = baseInterval * (swingPhase ? 1 + swing : 1 - swing);
+  swingPhase = !swingPhase;
+  lastIntervalMs = interval;
+  return interval;
+}
+
+function tickLoop() {
+  if (!isRunning) return;
+  scheduleBeat();
+  clearTimeout(intervalId);
+  intervalId = setTimeout(tickLoop, getNextIntervalMs());
+}
+
+function rescheduleTick() {
+  if (!isRunning) return;
+  clearTimeout(intervalId);
+  intervalId = setTimeout(tickLoop, getNextIntervalMs());
 }
 
 async function start() {
@@ -493,29 +617,13 @@ async function start() {
   isRunning = true;
   toggleButton.textContent = "Pause";
   setStatus("Running", true);
-
-  const bpm = Number(tempoInput.value);
-  const swing = Number(swingInput.value) / 100;
-
-  const baseInterval = 60000 / bpm;
-  let nextSwing = false;
-  lastIntervalMs = baseInterval;
+  swingPhase = false;
+  lastIntervalMs = 60000 / Number(tempoInput.value);
   cycleClapBeats = [];
-
-  scheduleBeat();
-  clearInterval(intervalId);
-  intervalId = setInterval(() => {
-    scheduleBeat();
-    if (swing > 0) {
-      clearInterval(intervalId);
-      const adjustedInterval = nextSwing
-        ? baseInterval * (1 + swing)
-        : baseInterval * (1 - swing);
-      lastIntervalMs = adjustedInterval;
-      nextSwing = !nextSwing;
-      intervalId = setInterval(() => scheduleBeat(), adjustedInterval);
-    }
-  }, baseInterval);
+  cycleSoftOverlayBeats = [];
+  cycleBeatCount = 0;
+  updateCycleSettings();
+  tickLoop();
 }
 
 function stop() {
@@ -523,7 +631,7 @@ function stop() {
   isRunning = false;
   toggleButton.textContent = "Start";
   setStatus("Stopped", false);
-  clearInterval(intervalId);
+  clearTimeout(intervalId);
 }
 
 function reset() {
@@ -531,6 +639,9 @@ function reset() {
   const { beats } = compasData[compasSelect.value];
   currentBeat = getStartIndex(compasSelect.value, beats);
   cycleClapBeats = [];
+  cycleSoftOverlayBeats = [];
+  cycleBeatCount = 0;
+  updateCycleSettings();
   const beatCells = grid.querySelectorAll(".beat");
   beatCells.forEach((cell) => cell.classList.remove("beat--active"));
 }
@@ -543,11 +654,43 @@ compasSelect.addEventListener("change", () => {
 [tempoInput, swingInput, accentInput].forEach((input) => {
   input.addEventListener("input", () => {
     updateValues();
-    if (isRunning) {
-      stop();
-      start();
+    if (isRunning && (input === tempoInput || input === swingInput)) {
+      rescheduleTick();
     }
   });
+});
+
+[tempoNumber, swingNumber, accentNumber].forEach((input) => {
+  input.addEventListener("input", () => {
+    const min = Number(input.min);
+    const max = Number(input.max);
+    let value = Number(input.value);
+    if (Number.isNaN(value)) {
+      return;
+    }
+    value = Math.max(min, Math.min(max, value));
+    if (input === tempoNumber) {
+      tempoInput.value = value;
+    }
+    if (input === swingNumber) {
+      swingInput.value = value;
+    }
+    if (input === accentNumber) {
+      accentInput.value = value;
+    }
+    updateValues();
+    if (isRunning && (input === tempoNumber || input === swingNumber)) {
+      rescheduleTick();
+    }
+  });
+});
+
+cyclesInput.addEventListener("input", () => {
+  updateCycleSettings();
+});
+
+infiniteInput.addEventListener("change", () => {
+  updateCycleSettings();
 });
 
 toggleButton.addEventListener("click", () => {
@@ -562,3 +705,13 @@ resetButton.addEventListener("click", reset);
 
 renderGrid();
 updateValues();
+updateCycleSettings();
+syncAdvancedPanel();
+window.addEventListener("resize", syncAdvancedPanel);
+
+if (grid && "ResizeObserver" in window) {
+  gridResizeObserver = new ResizeObserver(() => {
+    layoutBeats();
+  });
+  gridResizeObserver.observe(grid);
+}
