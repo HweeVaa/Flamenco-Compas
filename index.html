@@ -8,22 +8,15 @@
 </head>
 <body>
   <main class="app">
-    <header class="app__header">
-      <div>
-        <p class="eyebrow">PC version</p>
-        <h1>Flamenco Compas Trainer</h1>
-        <p class="subtitle">Practice flamenco compas with visual + audio pulse and accents.</p>
-      </div>
-      <div class="status-group">
-        <span class="credit">by HweeVaa</span>
-        <div class="status" id="status">Stopped</div>
-      </div>
-    </header>
-
     <section class="layout">
+      <div class="panel panel--actions" id="actionsPanel">
+        <div id="compasMount"></div>
+        <div id="actionsMount" class="actions actions--settings"></div>
+        <div id="rightMount"></div>
+      </div>
       <div class="panel panel--settings">
         <div class="controls">
-          <div class="control">
+          <div class="control" id="compasControl">
             <label for="compas">Compas type</label>
             <select id="compas">
               <option value="solea">Solea / Buleria (12 beats)</option>
@@ -69,17 +62,37 @@
             <input id="infinite" type="checkbox" checked />
               </div>
             </div>
+            <div class="control control--toggle" id="ensembleControl">
+              <div class="control__header">
+                <label for="ensemble">Ensemble <span class="inline-note">(multi-clap)</span></label>
+                <input id="ensemble" type="checkbox" />
+              </div>
+            </div>
           </div>
         </details>
       </div>
-        <div class="version">v1.0.0</div>
+        <div class="version">v1.1.0</div>
       </div>
 
       <div class="panel panel--compas">
         <div class="compas-ring" id="grid"></div>
         <div class="actions actions--compas">
-          <button id="toggle" class="button button--primary">Start</button>
-          <button id="reset" class="button">Reset</button>
+          <button id="toggle" class="button button--primary button--round" data-state="stopped" aria-label="Start">
+            <span class="sr-only" id="toggleLabel">Start</span>
+            <svg class="icon icon--play" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M8 5.5v13l10-6.5-10-6.5z" />
+            </svg>
+            <svg class="icon icon--pause" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7 5h4v14H7V5zm6 0h4v14h-4V5z" />
+            </svg>
+          </button>
+          <button id="reset" class="button button--round button--round-sm button--ghost" aria-label="Reset">
+            <span class="sr-only">Reset</span>
+            <svg class="icon icon--reset" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 5a7 7 0 1 1-6.32 9.55" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              <path d="M5 8V4h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+          </button>
         </div>
       </div>
     </section>

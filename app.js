@@ -65,12 +65,24 @@ const accentValue = document.getElementById("accentValue");
 const accentNumber = document.getElementById("accentNumber");
 const cyclesInput = document.getElementById("cycles");
 const infiniteInput = document.getElementById("infinite");
+// const ensembleInput = document.getElementById("ensemble"); // disabled for now
+const ensembleInput = null;
 const cyclesControl = document.querySelector(".control--cycles");
 const advancedDetails = document.getElementById("advanced");
 const grid = document.getElementById("grid");
 const status = document.getElementById("status");
 const toggleButton = document.getElementById("toggle");
 const resetButton = document.getElementById("reset");
+const toggleLabel = document.getElementById("toggleLabel");
+const actions = document.querySelector(".actions--compas");
+const actionsMount = document.getElementById("actionsMount");
+const actionsPanel = document.getElementById("actionsPanel");
+const compasControl = document.getElementById("compasControl");
+const compasMount = document.getElementById("compasMount");
+const controlsPanel = document.querySelector(".panel--settings .controls");
+const rightMount = document.getElementById("rightMount");
+const ensembleControl = document.getElementById("ensembleControl");
+const advancedGrid = document.querySelector(".advanced__grid");
 
 let audioContext = null;
 let isRunning = false;
@@ -86,7 +98,9 @@ let gridResizeObserver = null;
 let samplesReady = false;
 let samplesPromise = null;
 const PALMA_DURATION = 0.18;
+let subdivisionStep = 0;
 let masterGain = null;
+let masterCompressor = null;
 let dryGain = null;
 let wetGain = null;
 let spaceDelay = null;
@@ -188,7 +202,14 @@ function layoutBeats() {
   const sampleTile = grid.querySelector(".beat");
   const tileSize = sampleTile ? sampleTile.offsetWidth : 60;
   const padding = 10;
-  const radius = Math.max(0, size / 2 - tileSize / 2 - padding);
+  const radiusBonusRaw = getComputedStyle(grid).getPropertyValue("--radius-bonus");
+  const radiusBonus = Number.parseFloat(radiusBonusRaw) || 0;
+  const baseRadius = Math.max(0, size / 2 - tileSize / 2 - padding + radiusBonus);
+  const minSpacingFactor = 1.45;
+  const chordRequired = tileSize * minSpacingFactor;
+  const minRadius = chordRequired / (2 * Math.sin(Math.PI / beats.length));
+  const scaleFactor = Math.min(1, baseRadius / minRadius || 1);
+  const radius = baseRadius;
   const startBeat = "12";
   const startIndex = beats.findIndex((beat) => beat.label === startBeat);
   const shift = startIndex === -1 ? 0 : startIndex;
@@ -199,7 +220,7 @@ function layoutBeats() {
     if (!cell) return;
     const shiftedIndex = (index - shift + beats.length) % beats.length;
     const angle = (shiftedIndex / beats.length) * 360 + startAngle;
-    cell.style.transform = `translate(-50%, -50%) rotate(${angle}deg) translateY(${-radius}px) rotate(${-angle}deg)`;
+    cell.style.transform = `translate(-50%, -50%) rotate(${angle}deg) translateY(${-radius}px) rotate(${-angle}deg) scale(${scaleFactor})`;
   });
 }
 
@@ -256,9 +277,54 @@ function syncAdvancedPanel() {
   advancedDetails.open = !compact;
 }
 
+function syncActionsPlacement() {
+  if (!actions) return;
+  const isPortraitNarrow = window.matchMedia("(max-width: 720px)").matches;
+  if (isPortraitNarrow) {
+    if (actionsMount && actions.parentElement !== actionsMount) {
+      actionsMount.appendChild(actions);
+    }
+    if (rightMount && resetButton && resetButton.parentElement !== rightMount) {
+      rightMount.appendChild(resetButton);
+    }
+    if (compasMount && compasControl && compasControl.parentElement !== compasMount) {
+      compasMount.appendChild(compasControl);
+    }
+    if (advancedGrid && ensembleControl && ensembleControl.parentElement !== advancedGrid) {
+      advancedGrid.appendChild(ensembleControl);
+    }
+    return;
+  }
+
+  const compasPanel = document.querySelector(".panel--compas");
+  if (compasPanel && actions.parentElement !== compasPanel) {
+    compasPanel.appendChild(actions);
+  }
+  if (actions && resetButton && resetButton.parentElement !== actions) {
+    actions.appendChild(resetButton);
+  }
+  if (controlsPanel && compasControl && compasControl.parentElement !== controlsPanel) {
+    controlsPanel.prepend(compasControl);
+  }
+  if (advancedGrid && ensembleControl && ensembleControl.parentElement !== advancedGrid) {
+    advancedGrid.appendChild(ensembleControl);
+  }
+}
+
 function setStatus(text, isActive = false) {
+  if (!status) return;
   status.textContent = text;
   status.style.color = isActive ? "#6ee7ff" : "#f2c94c";
+}
+
+function setToggleState(running) {
+  if (!toggleButton) return;
+  const label = running ? "Pause" : "Start";
+  toggleButton.dataset.state = running ? "running" : "stopped";
+  toggleButton.setAttribute("aria-label", label);
+  if (toggleLabel) {
+    toggleLabel.textContent = label;
+  }
 }
 
 function ensureAudioContext() {
@@ -275,16 +341,23 @@ function ensureAudioContext() {
     masterGain = audioContext.createGain();
     masterGain.gain.value = 1;
 
+    masterCompressor = audioContext.createDynamicsCompressor();
+    masterCompressor.threshold.value = -22;
+    masterCompressor.knee.value = 24;
+    masterCompressor.ratio.value = 4.5;
+    masterCompressor.attack.value = 0.008;
+    masterCompressor.release.value = 0.26;
+
     warmthFilter = audioContext.createBiquadFilter();
     warmthFilter.type = "lowpass";
-    warmthFilter.frequency.value = 7200;
+    warmthFilter.frequency.value = 4800;
     warmthFilter.Q.value = 0.6;
 
     dryGain = audioContext.createGain();
     dryGain.gain.value = 1;
 
     wetGain = audioContext.createGain();
-    wetGain.gain.value = 0.26;
+    wetGain.gain.value = 0.32;
 
     spaceDelay = audioContext.createDelay(0.25);
     spaceDelay.delayTime.value = 0.04;
@@ -294,12 +367,13 @@ function ensureAudioContext() {
 
     spaceFilter = audioContext.createBiquadFilter();
     spaceFilter.type = "lowpass";
-    spaceFilter.frequency.value = 2800;
+    spaceFilter.frequency.value = 2200;
     spaceFilter.Q.value = 0.8;
 
-    masterGain.connect(warmthFilter);
+    masterGain.connect(masterCompressor);
+    masterCompressor.connect(warmthFilter);
     warmthFilter.connect(dryGain).connect(audioContext.destination);
-    masterGain.connect(spaceDelay);
+    masterCompressor.connect(spaceDelay);
     spaceDelay.connect(spaceFilter).connect(wetGain).connect(audioContext.destination);
     spaceDelay.connect(spaceFeedback).connect(spaceDelay);
   }
@@ -375,35 +449,84 @@ function pickPalmaBuffer(buffers, key, preferStronger = false, avoidIds = new Se
   return buffers[index];
 }
 
-function playPalmaSample(buffer, gainValue) {
+function playPalmaSample(buffer, gainValue, brighten = false, compress = false) {
   if (!audioContext || !buffer) return;
-  playPalmaLayer(buffer, gainValue, 0, 0);
+  playPalmaLayer(buffer, gainValue, 0, 0, brighten, compress);
 }
 
-function playPalmaLayer(buffer, gainValue, panValue, delaySeconds) {
+function playPalmaLayer(buffer, gainValue, panValue, delaySeconds, brighten = false, compress = false) {
   if (!audioContext || !buffer) return;
   const now = audioContext.currentTime + delaySeconds;
   const source = audioContext.createBufferSource();
   source.buffer = buffer;
+  source.playbackRate.value = 0.98;
   const gain = audioContext.createGain();
   gain.gain.setValueAtTime(gainValue, now);
   gain.gain.exponentialRampToValueAtTime(0.001, now + PALMA_DURATION);
+  const postGain = brighten ? audioContext.createBiquadFilter() : null;
+  if (postGain) {
+    postGain.type = "highshelf";
+    postGain.frequency.value = 3600;
+    postGain.gain.value = 3.5;
+  }
+  const postCompressor = compress ? audioContext.createDynamicsCompressor() : null;
+  if (postCompressor) {
+    postCompressor.threshold.value = -28;
+    postCompressor.knee.value = 18;
+    postCompressor.ratio.value = 6;
+    postCompressor.attack.value = 0.003;
+    postCompressor.release.value = 0.18;
+  }
   if (stereoPannerAvailable) {
     const panner = audioContext.createStereoPanner();
     panner.pan.setValueAtTime(panValue, now);
-    source.connect(gain).connect(panner).connect(masterGain);
+    if (postGain && postCompressor) {
+      source.connect(gain).connect(postGain).connect(postCompressor).connect(panner).connect(masterGain);
+    } else if (postGain) {
+      source.connect(gain).connect(postGain).connect(panner).connect(masterGain);
+    } else if (postCompressor) {
+      source.connect(gain).connect(postCompressor).connect(panner).connect(masterGain);
+    } else {
+      source.connect(gain).connect(panner).connect(masterGain);
+    }
   } else {
-    source.connect(gain).connect(masterGain);
+    if (postGain && postCompressor) {
+      source.connect(gain).connect(postGain).connect(postCompressor).connect(masterGain);
+    } else if (postGain) {
+      source.connect(gain).connect(postGain).connect(masterGain);
+    } else if (postCompressor) {
+      source.connect(gain).connect(postCompressor).connect(masterGain);
+    } else {
+      source.connect(gain).connect(masterGain);
+    }
   }
   source.start(now);
   source.stop(now + PALMA_DURATION);
 }
 
-function playPalmaDouble(primaryBuffer, secondaryBuffer, gainValue) {
+function playEnsemble(buffer, baseGain, brighten = false, layerCount = 2, compress = false) {
+  if (!audioContext || !buffer) return;
+  const layers = Math.max(1, Math.min(4, layerCount));
+  for (let i = 0; i < layers; i += 1) {
+    const pan = stereoPannerAvailable ? (Math.random() * 0.6 - 0.3) : 0;
+    const delay = Math.random() * 0.02;
+    const gainJitter = 0.78 + Math.random() * 0.34;
+    playPalmaLayer(buffer, baseGain * gainJitter, pan, delay, brighten, compress);
+  }
+}
+
+function playPalmaDouble(primaryBuffer, secondaryBuffer, gainValue, primaryBrighten = false, secondaryBrighten = false, secondaryCompress = false) {
   if (!audioContext || !primaryBuffer) return;
-  playPalmaLayer(primaryBuffer, gainValue, -0.02, 0);
+  playPalmaLayer(primaryBuffer, gainValue, -0.02, 0, primaryBrighten);
   if (secondaryBuffer) {
-    playPalmaLayer(secondaryBuffer, gainValue * 0.92, 0.02, 0.02 + Math.random() * 0.01);
+    playPalmaLayer(
+      secondaryBuffer,
+      gainValue * 0.92,
+      0.02,
+      0.02 + Math.random() * 0.01,
+      secondaryBrighten,
+      secondaryCompress
+    );
   }
 }
 
@@ -414,8 +537,8 @@ function playClick(beat) {
     const accentBase = Math.min(1, (Number(accentInput.value) / 100) * 1.2);
     const weakVariation = 0.85 + Math.random() * 0.3;
     const gainValue = beat.accent
-      ? (isHotAccent ? accentBase * 13.5 : accentBase * 7.6)
-      : 4.1 * weakVariation;
+      ? (isHotAccent ? accentBase * 11.2 : accentBase * 6.4)
+      : 3.4 * weakVariation;
     if (beat.accent) {
       const avoidAccentIds = new Set([...lastBeatSampleIds, ...avoidNextBeatSampleIds]);
       const primaryIndex = pickPalmaIndex(palmaSamples.strong, "strong", isHotAccent, avoidAccentIds);
@@ -427,21 +550,45 @@ function playClick(beat) {
         avoidSecondary.add(primaryId);
       }
 
-      const useSordasLayer = Math.random() < 0.15;
-      const secondaryKey = useSordasLayer ? "weak" : "strong";
-      const secondaryPool = useSordasLayer ? palmaSamples.weak : palmaSamples.strong;
+      const useSordasLayer = false;
+      const secondaryKey = "strong";
+      const secondaryPool = palmaSamples.strong;
       const secondaryIndex = pickPalmaIndex(secondaryPool, secondaryKey, false, avoidSecondary);
       const secondary = secondaryIndex >= 0 ? secondaryPool[secondaryIndex] : null;
       const secondaryId = secondaryIndex >= 0 ? makeSampleId(secondaryKey, secondaryIndex) : null;
 
-      playPalmaDouble(primary, secondary, Math.min(11.5, gainValue));
+      if (ensembleInput && ensembleInput.checked) {
+        playEnsemble(primary, Math.min(9.6, gainValue), true, 3);
+        if (secondary) {
+          playEnsemble(
+            secondary,
+            Math.min(7.0, gainValue * 0.9),
+            secondaryKey === "strong",
+            2,
+            secondaryKey === "weak"
+          );
+        }
+      } else {
+        playPalmaDouble(
+          primary,
+          secondary,
+          Math.min(11.5, gainValue),
+          true,
+          secondaryKey === "strong",
+          secondaryKey === "weak"
+        );
+      }
       lastBeatSampleIds = new Set([primaryId, secondaryId].filter(Boolean));
       avoidNextBeatSampleIds = new Set(lastBeatSampleIds);
     } else {
       const avoidWeakIds = new Set([...lastBeatSampleIds, ...avoidNextBeatSampleIds]);
       const weakIndex = pickPalmaIndex(palmaSamples.weak, "weak", false, avoidWeakIds);
       const buffer = weakIndex >= 0 ? palmaSamples.weak[weakIndex] : null;
-      playPalmaSample(buffer, Math.min(11.5, gainValue));
+      if (ensembleInput && ensembleInput.checked) {
+        playEnsemble(buffer, Math.min(6.8, gainValue), true, 2, true);
+      } else {
+        playPalmaSample(buffer, Math.min(11.5, gainValue), true, true);
+      }
       const weakId = weakIndex >= 0 ? makeSampleId("weak", weakIndex) : null;
       lastBeatSampleIds = new Set([weakId].filter(Boolean));
       avoidNextBeatSampleIds = new Set(lastBeatSampleIds);
@@ -450,7 +597,7 @@ function playClick(beat) {
   }
 
   const now = audioContext.currentTime;
-  const duration = 0.14;
+  const duration = 0.16;
   const buffer = audioContext.createBuffer(1, audioContext.sampleRate * duration, audioContext.sampleRate);
   const data = buffer.getChannelData(0);
   for (let i = 0; i < data.length; i += 1) {
@@ -461,12 +608,12 @@ function playClick(beat) {
   source.buffer = buffer;
   const bandpass = audioContext.createBiquadFilter();
   bandpass.type = "bandpass";
-  bandpass.frequency.value = beat.accent ? 2400 : 1400;
-  bandpass.Q.value = 1.2;
+  bandpass.frequency.value = beat.accent ? 1900 : 1200;
+  bandpass.Q.value = 0.9;
 
   const accentBase = Math.min(1, (Number(accentInput.value) / 100) * 1.25);
   const accentLevel = isHotAccent ? Math.min(1, accentBase * 1.2) : accentBase;
-  const volume = beat.accent ? accentLevel : 0.6;
+  const volume = beat.accent ? accentLevel * 0.85 : 0.45;
   const gain = audioContext.createGain();
   gain.gain.setValueAtTime(volume, now);
   gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
@@ -485,7 +632,11 @@ function playClap() {
     const buffers = useStrong ? palmaSamples.strong : palmaSamples.weak;
     const index = pickPalmaIndex(buffers, key, false, avoidIds);
     const buffer = index >= 0 ? buffers[index] : null;
-    playPalmaSample(buffer, 3.6);
+    if (ensembleInput && ensembleInput.checked) {
+      playEnsemble(buffer, 3.2, useStrong, 2, !useStrong);
+    } else {
+      playPalmaSample(buffer, 3.6, useStrong, !useStrong);
+    }
     const clapId = index >= 0 ? makeSampleId(key, index) : null;
     lastClapSampleIds = new Set([clapId].filter(Boolean));
     avoidNextBeatSampleIds = new Set([clapId].filter(Boolean));
@@ -530,10 +681,11 @@ function playClap() {
   second.stop(now + duration);
 }
 
-
 function scheduleBeat() {
   const { beats } = compasData[compasSelect.value];
   const startIndex = getStartIndex(compasSelect.value, beats);
+  const useEighths = false;
+
   if (currentBeat === startIndex) {
     cycleClapBeats = pickCycleClaps(beats, startIndex);
     cycleSoftOverlayBeats = pickCycleSoftOverlayBeats(beats, startIndex);
@@ -557,7 +709,11 @@ function scheduleBeat() {
     const avoidIds = new Set([...lastBeatSampleIds, ...lastClapSampleIds]);
     const overlayIndex = pickPalmaIndex(palmaSamples.strong, "strong", false, avoidIds);
     const buffer = overlayIndex >= 0 ? palmaSamples.strong[overlayIndex] : null;
-    playPalmaSample(buffer, 1.6);
+    if (ensembleInput && ensembleInput.checked) {
+      playEnsemble(buffer, 1.2, true, 2, false);
+    } else {
+      playPalmaSample(buffer, 1.6, true, false);
+    }
     const overlayId = overlayIndex >= 0 ? makeSampleId("strong", overlayIndex) : null;
     lastBeatSampleIds = new Set([overlayId].filter(Boolean));
   }
@@ -567,6 +723,7 @@ function scheduleBeat() {
     setTimeout(playClap, offbeatTime);
   }
   currentBeat = (currentBeat + 1) % beats.length;
+  subdivisionStep = 0;
   if (cyclesLeft !== null) {
     if (beats.length === 12) {
       const endBeat = compasSelect.value === "seguiriya" ? "6" : "12";
@@ -624,10 +781,11 @@ async function start() {
   setStatus("Loading samples...", true);
   await loadPalmaSamples();
   isRunning = true;
-  toggleButton.textContent = "Pause";
+  setToggleState(true);
   setStatus("Running", true);
   swingPhase = false;
   lastIntervalMs = 60000 / Number(tempoInput.value);
+  subdivisionStep = 0;
   cycleClapBeats = [];
   cycleSoftOverlayBeats = [];
   cycleBeatCount = 0;
@@ -638,7 +796,7 @@ async function start() {
 function stop() {
   if (!isRunning) return;
   isRunning = false;
-  toggleButton.textContent = "Start";
+  setToggleState(false);
   setStatus("Stopped", false);
   clearTimeout(intervalId);
 }
@@ -650,6 +808,7 @@ function reset() {
   cycleClapBeats = [];
   cycleSoftOverlayBeats = [];
   cycleBeatCount = 0;
+  subdivisionStep = 0;
   updateCycleSettings();
   const beatCells = grid.querySelectorAll(".beat");
   beatCells.forEach((cell) => cell.classList.remove("beat--active"));
@@ -702,6 +861,7 @@ infiniteInput.addEventListener("change", () => {
   updateCycleSettings();
 });
 
+
 toggleButton.addEventListener("click", () => {
   if (isRunning) {
     stop();
@@ -716,7 +876,10 @@ renderGrid();
 updateValues();
 updateCycleSettings();
 syncAdvancedPanel();
+setToggleState(false);
 window.addEventListener("resize", syncAdvancedPanel);
+window.addEventListener("resize", syncActionsPlacement);
+syncActionsPlacement();
 
 if (grid && "ResizeObserver" in window) {
   gridResizeObserver = new ResizeObserver(() => {
