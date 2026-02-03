@@ -25,7 +25,7 @@
       { label: "4", accent: false },
       { label: "5", accent: false },
       { label: "6", accent: true },
-      { label: "7", accent: false },
+      { label: "7", accent: false, rest: true },
       { label: "8", accent: false },
       { label: "9", accent: true },
       { label: "10", accent: false },
@@ -133,6 +133,11 @@ function getTopIndex(beats) {
 function getStartIndex(compasKey, beats) {
   if (compasKey === "solea") {
     const startIndex = beats.findIndex((beat) => beat.label === "1");
+    return startIndex === -1 ? 0 : startIndex;
+  }
+
+  if (compasKey === "seguiriya") {
+    const startIndex = beats.findIndex((beat) => beat.label === "8");
     return startIndex === -1 ? 0 : startIndex;
   }
 
@@ -543,9 +548,12 @@ function scheduleBeat() {
   }
 
   const hasClap = cycleClapBeats.includes(currentBeat) && lastIntervalMs > 0;
-  playClick(beat);
+  const isRest = Boolean(beat.rest);
+  if (!isRest) {
+    playClick(beat);
+  }
 
-  if (!beat.accent && cycleSoftOverlayBeats.includes(currentBeat) && samplesReady) {
+  if (!isRest && !beat.accent && cycleSoftOverlayBeats.includes(currentBeat) && samplesReady) {
     const avoidIds = new Set([...lastBeatSampleIds, ...lastClapSampleIds]);
     const overlayIndex = pickPalmaIndex(palmaSamples.strong, "strong", false, avoidIds);
     const buffer = overlayIndex >= 0 ? palmaSamples.strong[overlayIndex] : null;
@@ -554,14 +562,15 @@ function scheduleBeat() {
     lastBeatSampleIds = new Set([overlayId].filter(Boolean));
   }
 
-  if (hasClap) {
+  if (hasClap && !isRest) {
     const offbeatTime = Math.max(0, lastIntervalMs * 0.45);
     setTimeout(playClap, offbeatTime);
   }
   currentBeat = (currentBeat + 1) % beats.length;
   if (cyclesLeft !== null) {
     if (beats.length === 12) {
-      if (beat.label === "12") {
+      const endBeat = compasSelect.value === "seguiriya" ? "6" : "12";
+      if (beat.label === endBeat) {
         if (cycleBeatCount > 0) {
           cyclesLeft -= 1;
           if (cyclesLeft <= 0) {

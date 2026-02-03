@@ -111,10 +111,13 @@ h1 {
 
 .panel--compas {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   min-height: 0;
+  gap: 12px;
+  position: relative;
 }
 
 .controls {
@@ -155,11 +158,11 @@ h1 {
 }
 
 .control input[type="number"] {
-  width: clamp(70px, 6vw, 96px);
+  width: clamp(80px, 7vw, 110px);
   background: #1a1f2e;
   border: 1px solid #2b3245;
   color: #eef1f6;
-  padding: 10px 12px;
+  padding: 10px 14px;
   border-radius: 8px;
   font-size: clamp(1rem, 0.7vw + 0.75rem, 1.2rem);
   text-align: right;
@@ -230,6 +233,14 @@ h1 {
   display: flex;
   gap: 12px;
   margin-top: 8px;
+}
+
+.actions--compas {
+  margin-top: 0;
+  justify-content: center;
+  position: absolute;
+  top: 12px;
+  right: 12px;
 }
 
 .button {
